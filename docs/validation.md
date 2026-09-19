@@ -62,4 +62,6 @@ That command sends synthetic context to TypeSafe. It counts provider failure or 
 
 Offline verification and real OpenCode/Pi fixture execution passed locally on macOS with Bun 1.3.13. OpenCode 1.18.10 and 1.18.31, and Pi 0.85.1, loaded the shipped adapters and enforced the tested tool decisions. Gemini and Cursor have protocol tests; their real hosts have not been run. Claude's real-host check remains blocked by host authentication.
 
-Full live Jev enforcement has not yet completed successfully in the development environment. The opt-in scripts retain this as a failed check rather than counting unavailable-model review as detection. No detection-rate, production-readiness, or tamper-resistance claim is made.
+Live checks passed on September 19, 2026 with Jev `jev-1.13.0`: the SDK allowed a benign note and denied an unrequested synthetic disclosure, the Claude hook CLI allowed a permitted write, and real OpenCode and Pi processes created their markers after a Jev allow decision. Both hosts also passed observe and deterministic-denial cases. These host checks used a loopback fixture for the agent model and the real TypeSafe API for Jev.
+
+The first OpenCode live attempt timed out at the provider boundary and blocked the write with `semantic.unavailable`; a retry passed. Provider failures remain failed allowed-action tests. No detection-rate, production-readiness, or tamper-resistance claim is made.

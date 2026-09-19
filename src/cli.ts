@@ -2,6 +2,8 @@
 import { existsSync } from "node:fs";
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { cursorHook } from "./adapters/cursor";
+import { geminiHook } from "./adapters/gemini";
 import { claudeHook } from "./claude";
 import { defaultConfig } from "./endpoint";
 import { combine } from "./guard";
@@ -38,7 +40,7 @@ async function stdin(): Promise<string> {
 async function main() {
   if (!command || command === "--help" || command === "help") {
     console.log(
-      `Turnstile 0.1.0-alpha.1\n\n  init --project PATH       Create observe-only config; no host settings changed\n  claude-settings --config PATH\n                           Print hook settings to merge or pass to claude --settings\n  hook --config PATH       Handle Claude Code hook JSON on stdin\n  replay FILE [--review N] [--deny N]\n                           Recompute semantic thresholds from metadata-only audit\n\nJev is opt-in in config.json and requires TYPESAFE_API_KEY.\nSee docs/claude-code.md for scoped installation and removal.`,
+      `Turnstile 0.1.0-alpha.2\n\n  init --project PATH       Create observe-only config; no host settings changed\n  claude-settings --config PATH\n  gemini-settings --config PATH\n  cursor-settings --config PATH\n                           Print settings to merge into the host's project config\n  opencode-plugin          Print a project plugin wrapper\n  adapter-path --harness pi|opencode\n                           Print the extension or plugin source path\n  hook --config PATH [--harness claude|gemini|cursor]\n                           Handle hook JSON on stdin; Claude is the default\n  replay FILE [--review N] [--deny N]\n                           Recompute semantic thresholds from metadata-only audit\n\nJev is opt-in in config.json and requires TYPESAFE_API_KEY.\nSee docs/harnesses.md for scoped installation and host behavior.`,
     );
     return;
   }
@@ -58,18 +60,38 @@ async function main() {
     );
     return;
   }
-  if (command === "claude-settings") {
+  if (["claude-settings", "gemini-settings", "cursor-settings"].includes(command)) {
     const config = option("--config");
     noExtras();
     if (!config || !existsSync(config)) throw new Error("Existing --config required");
-    const hook = `${quote(process.execPath)} ${quote(resolve(import.meta.dir, "cli.ts"))} hook --config ${quote(resolve(config))}`;
+    const harness = command.split("-")[0];
+    const hook = `${quote(process.execPath)} ${quote(resolve(import.meta.dir, "cli.ts"))} hook --config ${quote(resolve(config))} --harness ${harness}`;
+    const events =
+      harness === "claude"
+        ? ["UserPromptSubmit", "PreToolUse", "SessionEnd"]
+        : harness === "gemini"
+          ? ["BeforeAgent", "BeforeTool", "SessionEnd"]
+          : ["beforeSubmitPrompt", "preToolUse", "sessionEnd"];
     console.log(
       JSON.stringify(
         {
+          ...(harness === "cursor" ? { version: 1 } : {}),
           hooks: Object.fromEntries(
-            ["UserPromptSubmit", "PreToolUse", "SessionEnd"].map((event) => [
+            events.map((event) => [
               event,
-              [{ hooks: [{ type: "command", command: hook, timeout: 15 }] }],
+              harness === "cursor"
+                ? [{ command: hook, timeout: 15, failClosed: true }]
+                : [
+                    {
+                      hooks: [
+                        {
+                          type: "command",
+                          command: hook,
+                          timeout: harness === "gemini" ? 15000 : 15,
+                        },
+                      ],
+                    },
+                  ],
             ]),
           ),
         },
@@ -79,10 +101,34 @@ async function main() {
     );
     return;
   }
+  if (command === "opencode-plugin") {
+    noExtras();
+    console.log(
+      `export { default } from ${JSON.stringify(resolve(import.meta.dir, "adapters/opencode.ts"))};`,
+    );
+    return;
+  }
+  if (command === "adapter-path") {
+    const harness = option("--harness");
+    noExtras();
+    if (harness !== "pi" && harness !== "opencode") throw new Error("Unsupported adapter");
+    console.log(resolve(import.meta.dir, `adapters/${harness}.ts`));
+    return;
+  }
   if (command === "hook") {
     const config = option("--config");
+    const harness = option("--harness") ?? "claude";
     noExtras();
     if (!config) throw new Error("--config required");
+    const handler =
+      harness === "claude"
+        ? claudeHook
+        : harness === "gemini"
+          ? geminiHook
+          : harness === "cursor"
+            ? cursorHook
+            : undefined;
+    if (!handler) throw new Error("Unsupported hook harness");
     // Exit before the host timeout, which can otherwise let the tool continue.
     const deadline = setTimeout(() => {
       console.error("Turnstile hook timed out; action blocked.");
@@ -91,11 +137,7 @@ async function main() {
     try {
       console.log(
         JSON.stringify(
-          await claudeHook(
-            JSON.parse(await stdin()),
-            resolve(config),
-            process.env.TYPESAFE_API_KEY,
-          ),
+          await handler(JSON.parse(await stdin()), resolve(config), process.env.TYPESAFE_API_KEY),
         ),
       );
     } finally {

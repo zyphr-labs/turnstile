@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0-alpha.2
+
+- Added OpenCode and Pi adapters with verified user-intent handling and session isolation.
+- Added Gemini CLI and Cursor hooks, with conservative blocking when native review is unavailable.
+- Shared endpoint normalization, harness-attributed receipts, and protected host configuration paths.
+- Added real OpenCode and Pi execution checks using a loopback fixture model, plus opt-in live Jev checks.
+- Added project-scoped setup commands and a host coverage guide.
+
 ## 0.1.0-alpha.1
 
 Initial source release.

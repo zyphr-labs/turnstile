@@ -37,6 +37,29 @@ The check generates settings for a temporary project and launches Claude with on
 
 This opt-in test consumes Claude usage as well as Jev usage. It does not install persistent hooks or change machine-wide settings. It does not validate interactive approval clicks or every Claude permission mode.
 
+## Real OpenCode and Pi checks
+
+With the two hosts installed, run:
+
+```sh
+bun run test:harnesses
+```
+
+Each script starts a loopback OpenAI-compatible fixture server, loads the actual adapter into an isolated host process, and emits one harmless write tool call. Observe mode must create the expected marker. Enforced hard denial must leave it absent. The receipt must match the trusted goal and exact normalized arguments. Temporary projects, host state, and fixture servers are removed afterward.
+
+These checks do not use an external model account. CI installs pinned OpenCode 1.18.10 and Pi 0.85.1 and runs them on Linux. Pi requires Node 22.19 or later. You can run either test independently with `bun run test:opencode` or `bun run test:pi`.
+
+To additionally require a real Jev allow decision before the host writes a marker:
+
+```sh
+# TYPESAFE_API_KEY must already be supplied through your environment.
+bun run test:live:harnesses
+```
+
+That command sends synthetic context to TypeSafe. It counts provider failure or review as a failed allowed-action test. The agent model remains the loopback fixture, so no OpenCode/Pi model login is needed.
+
 ## Initial validation status
 
-Offline verification passed locally on macOS with Bun 1.3.13. The hook protocol is covered by automated tests. Authenticated live-provider and real-host success has not yet been established for this alpha; run the opt-in checks in your environment before relying on it. No detection-rate, production-readiness, or tamper-resistance claim is made.
+Offline verification and real OpenCode/Pi fixture execution passed locally on macOS with Bun 1.3.13. OpenCode 1.18.10 and 1.18.31, and Pi 0.85.1, loaded the shipped adapters and enforced the tested tool decisions. Gemini and Cursor have protocol tests; their real hosts have not been run. Claude's real-host check remains blocked by host authentication.
+
+Full live Jev enforcement has not yet completed successfully in the development environment. The opt-in scripts retain this as a failed check rather than counting unavailable-model review as detection. No detection-rate, production-readiness, or tamper-resistance claim is made.

@@ -78,7 +78,22 @@ export function endpointAuthorization(root: string) {
       )
     )
       return { verdict: "deny", reasons: ["endpoint.sensitive_path"] };
-    if (parts.some((part) => [".turnstile", ".claude", ".git"].includes(part)))
+    if (
+      parts.some((part) =>
+        [
+          ".turnstile",
+          ".claude",
+          ".opencode",
+          ".pi",
+          ".gemini",
+          ".cursor",
+          ".git",
+          "opencode.json",
+          "opencode.jsonc",
+          "turnstile-hooks.json",
+        ].includes(part.toLowerCase()),
+      )
+    )
       return { verdict: "deny", reasons: ["endpoint.control_path"] };
     if (request.tool === "Write" && typeof request.arguments.content !== "string")
       return { verdict: "deny", reasons: ["endpoint.invalid_arguments"] };

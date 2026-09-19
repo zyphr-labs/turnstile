@@ -5,12 +5,12 @@ Turnstile aims to catch policy violations and task drift before a cooperating ag
 ## What is enforced
 
 - Exact tool rules and top-level argument equality constraints in the SDK.
-- Workspace path boundaries, selected credential filenames, and control directories for Claude `Read`, `Write`, and `Edit`.
-- Native review for shell and unsupported tools in enforce mode.
+- Workspace path boundaries, selected credential filenames, and control directories for normalized `Read`, `Write`, and `Edit` actions across supported hosts.
+- Native review for Claude and interactive Pi; enforced review blocks on hosts without an approval callback.
 - Review when semantic evaluation is missing, uncertain, invalid, or unavailable.
 - Model risk thresholds that can tighten a permitted action.
 
-Credential filename checks cover `.env` and `.env.*`, `.ssh`, `.aws`, `.secrets`, and `.pem`, `.key`, `.p12`, `.pfx` suffixes. Control-directory checks cover `.turnstile`, `.claude`, and `.git`. These are path policies, not content classification.
+Credential filename checks cover `.env` and `.env.*`, `.ssh`, `.aws`, `.secrets`, and `.pem`, `.key`, `.p12`, `.pfx` suffixes. Control-directory checks cover `.turnstile`, `.claude`, `.opencode`, `.pi`, `.gemini`, `.cursor`, and `.git`. `opencode.json`, `opencode.jsonc`, and `turnstile-hooks.json` are also protected. These are path policies, not content classification.
 
 ## What is outside the guarantee
 
@@ -18,11 +18,11 @@ Credential filename checks cover `.env` and `.env.*`, `.ssh`, `.aws`, `.secrets`
 
 **Filesystem races and aliases.** Path validation precedes the actual file operation. Concurrent symlink changes and hard links are not prevented. Stable path checks do not make filesystem operations atomic or identify all references to the same data.
 
-**Shell semantics.** A command can invoke arbitrary programs and change directories. This adapter requires native review rather than asserting that a command string proves its effects are safe. Human approval may allow operations beyond Turnstile's file-tool checks.
+**Shell semantics.** A command can invoke arbitrary programs and change directories. The adapters require review rather than asserting that a command string proves its effects are safe. Human approval may allow operations beyond Turnstile's file-tool checks.
 
-**Content provenance.** The adapter records the latest user prompt and proposed arguments. It does not read transcripts, collect tool output, or prove which input caused an action. The SDK can receive labeled untrusted evidence, but Jev's inference remains probabilistic.
+**Content provenance.** The adapters use the latest verified user prompt and proposed arguments. It does not read transcripts, collect tool output, or prove which input caused an action. The SDK can receive labeled untrusted evidence, but Jev's inference remains probabilistic.
 
-**Read contents and memory.** The adapter checks the requested path without reading the file. Secrets in ordinary files, data already in the model's context, and sensitive information stored by another tool may be invisible.
+**Read contents and memory.** Each adapter checks the requested path without reading the file. Secrets in ordinary files, data already in the model's context, and sensitive information stored by another tool may be invisible.
 
 **Host coverage.** Only registered hook events are mediated. New tools, delegate agents, background processes, skipped hooks, host failures, and host updates can change coverage. Unsupported tools request approval by default; that does not provide inspection of their internal actions.
 
@@ -35,3 +35,5 @@ Credential filename checks cover `.env` and `.env.*`, `.ssh`, `.aws`, `.secrets`
 Use dedicated credentials, OS permissions, a sandbox, and network restrictions appropriate to the agent's task. Keep policy controlled by the operator. Treat native approvals as a grant for the exact proposed action, and inspect receipts before promoting an observe-only trial to enforcement.
 
 No machine-wide hooks, proxy settings, certificate trust, or OS policy are changed by the CLI. This release is intended for macOS and Linux; Windows is not validated.
+
+**Host-specific gaps.** OpenCode user shell commands and attachment reads, Pi user `!` commands and direct extension operations, and Cursor Tab completions are outside these adapters. Later plugins or extensions can mutate checked arguments and are trusted. See [integrations](harnesses.md) for each boundary.

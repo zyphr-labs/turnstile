@@ -75,6 +75,8 @@ export const decisionSchema = z
     model: z.string().optional(),
     inputTokens: z.number().int().nonnegative().optional(),
     latencyMs: z.number().nonnegative(),
+    harness: z.enum(["claude", "opencode", "pi", "gemini", "cursor"]).optional(),
+    sessionHash: z.string().optional(),
   })
   .strict();
 export type Decision = z.infer<typeof decisionSchema>;

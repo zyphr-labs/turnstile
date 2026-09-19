@@ -7,9 +7,9 @@
 
 Turnstile combines deterministic permissions with [Jev](https://docs.typesafe.ai/) checks for task drift, unauthorized disclosure, and instructions from untrusted content. It returns `allow`, `review`, or `deny`, and records the decision for inspection and threshold replay.
 
-The first integration is for Claude Code on laptops and servers. Applications can use the same TypeScript engine to guard their own tool executors.
+Turnstile integrates with Claude Code, OpenCode, Pi, Gemini CLI, and Cursor on laptops and servers. Applications can use the same TypeScript engine to guard their own tool executors.
 
-**Status: experimental alpha.** The repository runs from source with Bun. There is no published npm package. The Claude adapter checks selected tool boundaries; it is not an endpoint sandbox or a replacement for operating-system permissions. Start in observe mode and read the [coverage and limits](docs/threat-model.md) before enabling enforcement.
+**Status: experimental alpha.** The repository runs from source with Bun. There is no published npm package. The adapters check selected tool boundaries; it is not an endpoint sandbox or a replacement for operating-system permissions. Start in observe mode and read the [coverage and limits](docs/threat-model.md) before enabling enforcement.
 
 ## Try it
 
@@ -66,7 +66,21 @@ await guard.execute(
 
 Create the `notes` directory before running that example. `execute` passes a snapshot of the checked arguments to the callback. In enforce mode it throws `ActionBlocked` for review or denial and never invokes the callback. `check` returns a decision without executing anything. The application must honor that decision.
 
-## Use with Claude Code
+## Connect an agent
+
+See the [integration guide](docs/harnesses.md) for setup and removal. OpenCode uses a project plugin; Pi uses an extension loaded with `-e`; Gemini CLI and Cursor use project hook settings. All share one policy format.
+
+| Host | Enforcement point | Review behavior |
+| --- | --- | --- |
+| Claude Code | Pre-tool hook | Native approval |
+| OpenCode | Before-tool plugin | Block |
+| Pi | Tool-call extension | Exact-action confirmation when UI exists; otherwise block |
+| Gemini CLI | Before-tool hook | Block |
+| Cursor | Generic pre-tool hook | Block |
+
+OpenCode and Pi have real tool-execution checks using a loopback fixture model. Gemini, Cursor, and Claude have protocol tests; those are not claims of full host validation.
+
+### Claude Code example
 
 Initialize configuration in a project you own:
 
@@ -128,7 +142,7 @@ Observe mode records the same policy verdict but does not enforce it. Configurat
 
 ## Inspect and replay decisions
 
-The Claude adapter appends JSON lines to `.turnstile/decisions.jsonl`. Receipts contain verdicts, reason codes, model scores, latency, and fingerprints, without raw prompts or tool arguments.
+The endpoint adapters append JSON lines to `.turnstile/decisions.jsonl`. Receipts contain verdicts, reason codes, model scores, latency, and fingerprints, without raw prompts or tool arguments.
 
 ```sh
 bun run cli replay /absolute/path/to/project/.turnstile/decisions.jsonl \
@@ -140,13 +154,14 @@ Replay shows which verdicts would change using the recorded scores. It makes no 
 ## Data and trust
 
 - Jev is a hosted API. Enabling it sends the current goal, tool name, arguments, and supplied evidence to TypeSafe after limited credential redaction. File contents in `Write` and `Edit` arguments are included. Redaction is not a complete secret or PII detector.
-- `Read` file contents and full Claude transcripts are not collected. The adapter cannot infer the contents of a file it has not seen. Its untrusted-evidence list is empty; application integrations can supply evidence explicitly.
-- Session files store the latest raw user prompt locally with mode `0600`. Normal session end removes that file. Crashed sessions may leave files behind; there is no automatic retention cleanup.
+- `Read` file contents and full Claude transcripts are not collected. The adapters cannot infer the contents of files they have not seen. Their untrusted-evidence lists are empty; application integrations can supply evidence explicitly.
+- Claude, Gemini, and Cursor session files store the latest raw user prompt locally with mode `0600`. Session-end hooks attempt cleanup. Crashed sessions may leave files behind; there is no automatic retention cleanup. OpenCode and Pi keep prompt state in process memory.
 - Audit fingerprints are unsalted hashes, not anonymization. Audit files remain local, with no telemetry or upload service.
 - Same-user code can change hooks, configuration, or files. Path checks are not atomic filesystem mediation. Use OS isolation when that is part of your threat model.
 
 ## Project documentation
 
+- [All agent integrations](docs/harnesses.md)
 - [Claude Code installation and operation](docs/claude-code.md)
 - [Policy and SDK reference](docs/policy.md)
 - [Architecture and failure behavior](docs/architecture.md)

@@ -1,0 +1,37 @@
+# Threat model
+
+Turnstile aims to catch policy violations and task drift before a cooperating agent executes a tool. The first release assumes a trusted user, trusted application integration, and a stable local workspace. It treats tool arguments, external evidence, and model responses as untrusted.
+
+## What is enforced
+
+- Exact tool rules and top-level argument equality constraints in the SDK.
+- Workspace path boundaries, selected credential filenames, and control directories for Claude `Read`, `Write`, and `Edit`.
+- Native review for shell and unsupported tools in enforce mode.
+- Review when semantic evaluation is missing, uncertain, invalid, or unavailable.
+- Model risk thresholds that can tighten a permitted action.
+
+Credential filename checks cover `.env` and `.env.*`, `.ssh`, `.aws`, `.secrets`, and `.pem`, `.key`, `.p12`, `.pfx` suffixes. Control-directory checks cover `.turnstile`, `.claude`, and `.git`. These are path policies, not content classification.
+
+## What is outside the guarantee
+
+**Same-user tampering.** The agent or another process with the user's permissions can alter policy, remove hooks, edit state, or invoke tools outside the integration. Turnstile is not EDR, an OS sandbox, or tamper protection.
+
+**Filesystem races and aliases.** Path validation precedes the actual file operation. Concurrent symlink changes and hard links are not prevented. Stable path checks do not make filesystem operations atomic or identify all references to the same data.
+
+**Shell semantics.** A command can invoke arbitrary programs and change directories. This adapter requires native review rather than asserting that a command string proves its effects are safe. Human approval may allow operations beyond Turnstile's file-tool checks.
+
+**Content provenance.** The adapter records the latest user prompt and proposed arguments. It does not read transcripts, collect tool output, or prove which input caused an action. The SDK can receive labeled untrusted evidence, but Jev's inference remains probabilistic.
+
+**Read contents and memory.** The adapter checks the requested path without reading the file. Secrets in ordinary files, data already in the model's context, and sensitive information stored by another tool may be invisible.
+
+**Host coverage.** Only registered hook events are mediated. New tools, delegate agents, background processes, skipped hooks, host failures, and host updates can change coverage. Unsupported tools request approval by default; that does not provide inspection of their internal actions.
+
+**Semantic certainty.** The model can miss unsafe actions or flag legitimate work. Default thresholds are uncalibrated. The small synthetic smoke checks are not evidence of production detection rates.
+
+**Remote data handling.** Explicitly enabling Jev sends redacted context to TypeSafe. Redaction is partial. Evaluate the provider's current terms and your own data constraints before enabling it on real work.
+
+## Deployment boundary
+
+Use dedicated credentials, OS permissions, a sandbox, and network restrictions appropriate to the agent's task. Keep policy controlled by the operator. Treat native approvals as a grant for the exact proposed action, and inspect receipts before promoting an observe-only trial to enforcement.
+
+No machine-wide hooks, proxy settings, certificate trust, or OS policy are changed by the CLI. This release is intended for macOS and Linux; Windows is not validated.

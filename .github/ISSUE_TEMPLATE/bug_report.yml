@@ -1,0 +1,62 @@
+name: Bug report
+description: Report incorrect behavior, including unnecessary blocks or missed policy decisions.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a vulnerability, use the private reporting link instead. Replace real tool arguments and conversations with synthetic data. Do not include keys or private logs.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Include the commit SHA if running from source.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Bun version, and host agent version if using an adapter.
+    validations:
+      required: true
+  - type: dropdown
+    id: integration
+    attributes:
+      label: Integration
+      options:
+        - SDK
+        - Claude Code hook
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - Observe
+        - Enforce
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest commands or code and a sanitized policy needed to reproduce the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include sanitized decision output or errors if useful.
+    validations:
+      required: true

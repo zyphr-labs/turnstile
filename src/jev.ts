@@ -1,16 +1,34 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
-import { type CheckedRequest, type Scores, scoresSchema } from "./schema";
+import { type CheckedRequest, type Scores, type SemanticFailure, scoresSchema } from "./schema";
 
-export type Judgment = { scores: Scores; model: string; inputTokens: number };
+export type Judgment = {
+  scores: Scores;
+  model: string;
+  inputTokens: number;
+  evaluatorVersion?: string;
+  evaluatorHash?: string;
+};
 export const judgmentSchema = z
   .object({
     scores: scoresSchema,
     model: z.string().min(1).max(128),
     inputTokens: z.number().int().nonnegative(),
+    evaluatorVersion: z.string().min(1).max(128).optional(),
+    evaluatorHash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
   })
   .strict();
 export type Judge = (request: CheckedRequest) => Promise<Judgment>;
 export const MODEL = "jev-1.13.0";
+export const EVALUATOR_VERSION = "turnstile-questions-v2";
+export class JevError extends Error {
+  constructor(public readonly code: SemanticFailure) {
+    super(`Jev evaluation failed: ${code}`);
+  }
+}
 const questions = {
   intentDrift: {
     type: "noul",
@@ -72,7 +90,11 @@ export function redact(value: unknown): unknown {
 const answer = z.object({ type: z.literal("noul"), noul: z.number().min(0).max(1) });
 const responseSchema = z.object({
   model: z.string().min(1).max(128),
-  answers: z.object({ intentDrift: answer, dataDisclosure: answer, instructionOverride: answer }),
+  answers: z.object({
+    intentDrift: answer,
+    dataDisclosure: answer,
+    instructionOverride: answer.optional(),
+  }),
   usage: z.object({ input_tokens: z.number().int().nonnegative() }),
 });
 
@@ -87,43 +109,73 @@ export function createJevJudge(options: {
   if (!options.apiKey.trim() || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000)
     throw new Error("Invalid Jev configuration");
   return async (request) => {
-    const body = JSON.stringify({ state: redact(request), model, questions });
-    if (Buffer.byteLength(body) > 64000) throw new Error("Jev context exceeds limit");
-    const response = await (options.fetch ?? fetch)("https://api.typesafe.ai/v1/systemone", {
-      method: "POST",
-      redirect: "error",
-      signal: AbortSignal.timeout(timeoutMs),
-      headers: { Authorization: `Bearer ${options.apiKey}`, "Content-Type": "application/json" },
-      body,
-    });
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new Error("Jev request failed");
-    }
-    // Bound response allocation, including servers without Content-Length.
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("Jev response missing");
-    const chunks: Uint8Array[] = [];
-    let size = 0;
+    const activeQuestions = request.evidence.length
+      ? questions
+      : { intentDrift: questions.intentDrift, dataDisclosure: questions.dataDisclosure };
+    const evaluatorHash = createHash("sha256")
+      .update(JSON.stringify({ version: EVALUATOR_VERSION, model, questions: activeQuestions }))
+      .digest("hex");
+    const body = JSON.stringify({ state: redact(request), model, questions: activeQuestions });
+    if (Buffer.byteLength(body) > 64000) throw new JevError("context_limit");
+    const signal = AbortSignal.timeout(timeoutMs);
     try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        size += value.length;
-        if (size > 16000) throw new Error("Jev response exceeds limit");
-        chunks.push(value);
+      const response = await (options.fetch ?? fetch)("https://api.typesafe.ai/v1/systemone", {
+        method: "POST",
+        redirect: "error",
+        signal,
+        headers: { Authorization: `Bearer ${options.apiKey}`, "Content-Type": "application/json" },
+        body,
+      });
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new JevError(
+          response.status === 401 || response.status === 403
+            ? "authentication"
+            : response.status === 429
+              ? "rate_limited"
+              : "http",
+        );
       }
-    } finally {
-      await reader.cancel();
+      // Bound response allocation, including servers without Content-Length.
+      const reader = response.body?.getReader();
+      if (!reader) throw new JevError("invalid_response");
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.length;
+          if (size > 16000) throw new JevError("invalid_response");
+          chunks.push(value);
+        }
+      } finally {
+        await reader.cancel();
+      }
+      let data: z.infer<typeof responseSchema>;
+      try {
+        data = responseSchema.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch {
+        throw new JevError("invalid_response");
+      }
+      if (data.model !== model || (request.evidence.length && !data.answers.instructionOverride))
+        throw new JevError("invalid_response");
+      return {
+        model: data.model,
+        inputTokens: data.usage.input_tokens,
+        evaluatorVersion: EVALUATOR_VERSION,
+        evaluatorHash,
+        scores: {
+          intentDrift: data.answers.intentDrift.noul,
+          dataDisclosure: data.answers.dataDisclosure.noul,
+          ...(request.evidence.length && data.answers.instructionOverride
+            ? { instructionOverride: data.answers.instructionOverride.noul }
+            : {}),
+        },
+      };
+    } catch (error) {
+      if (error instanceof JevError) throw error;
+      throw new JevError(signal.aborted ? "timeout" : "network");
     }
-    const data = responseSchema.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-    if (data.model !== model) throw new Error("Unexpected Jev model version");
-    return {
-      model: data.model,
-      inputTokens: data.usage.input_tokens,
-      scores: scoresSchema.parse(
-        Object.fromEntries(Object.entries(data.answers).map(([key, value]) => [key, value.noul])),
-      ),
-    };
   };
 }

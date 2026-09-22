@@ -9,7 +9,7 @@ Turnstile combines deterministic permissions with [Jev](https://docs.typesafe.ai
 
 Turnstile integrates with Claude Code, OpenCode, Pi, Gemini CLI, and Cursor on laptops and servers. Applications can use the same TypeScript engine to guard their own tool executors.
 
-**Status: experimental alpha.** The repository runs from source with Bun. There is no published npm package. The adapters check selected tool boundaries; it is not an endpoint sandbox or a replacement for operating-system permissions. Start in observe mode and read the [coverage and limits](docs/threat-model.md) before enabling enforcement.
+**Status: experimental alpha.** The repository runs from source with Bun. There is no published npm package. The adapters check selected tool boundaries; it is not an endpoint sandbox or a replacement for operating-system permissions. Start in observe mode and read the [coverage and limits](docs/threat-model.md) before enabling enforcement. The [Pi pilot guide](docs/pilot.md) covers a complete read, edit, and approved-test workflow, diagnostics, and current validation results.
 
 ## Try it
 
@@ -133,21 +133,23 @@ Jev never grants authority that policy denied. Explicit review rules also remain
 | Explicit review or unknown tool | Review by default |
 | Any semantic score at least `0.85` | Deny |
 | Any semantic score at least `0.35`, below `0.85` | Review |
-| All scores below `0.35` | Allow |
+| All assessed scores below `0.35` | Allow |
 | Missing goal, disabled Jev, timeout, rejected request, invalid response | Review |
 
-The thresholds are starting values, not calibrated guarantees. Jev scores are model estimates. They do not prove that an action is authorized, safe, or influenced by an injection.
+Without supplied evidence, instruction override is unassessed and its score is omitted. Task alignment and disclosure checks still run. The thresholds are starting values, not calibrated guarantees. Jev scores are model estimates. They do not prove that an action is authorized, safe, or influenced by an injection.
 
 Observe mode records the same policy verdict but does not enforce it. Configuration, input, and audit failures still stop the SDK executor or produce a blocking hook error. See [failure behavior](docs/architecture.md#failure-behavior).
 
 ## Inspect and replay decisions
 
-The endpoint adapters append JSON lines to `.turnstile/decisions.jsonl`. Receipts contain verdicts, reason codes, model scores, latency, and fingerprints, without raw prompts or tool arguments.
+The endpoint adapters append JSON lines to `.turnstile/decisions.jsonl`. Receipts contain verdicts, reason codes, assessed model scores, evaluator and authorization fingerprints, and latency, without raw prompts or tool arguments. Pi also writes linked approval and release-request records to `outcomes.jsonl`; these do not prove execution. Each log retains at most 1 MiB plus three archives. Records older than seven days are pruned on the next append.
 
 ```sh
 bun run cli replay /absolute/path/to/project/.turnstile/decisions.jsonl \
   --review 0.45 --deny 0.90
 ```
+
+Use `bun run cli doctor --config /absolute/path/to/project/.turnstile/config.json` to inspect configuration and recent adapter evidence without making an API call.
 
 Replay shows which verdicts would change using the recorded scores. It makes no model calls and preserves hard denials and unavailable-model reviews. It does not re-evaluate content or simulate a new tool policy.
 
@@ -155,7 +157,7 @@ Replay shows which verdicts would change using the recorded scores. It makes no 
 
 - Jev is a hosted API. Enabling it sends the current goal, tool name, arguments, and supplied evidence to TypeSafe after limited credential redaction. File contents in `Write` and `Edit` arguments are included. Redaction is not a complete secret or PII detector.
 - `Read` file contents and full Claude transcripts are not collected. The adapters cannot infer the contents of files they have not seen. Their untrusted-evidence lists are empty; application integrations can supply evidence explicitly.
-- Claude, Gemini, and Cursor session files store the latest raw user prompt locally with mode `0600`. Session-end hooks attempt cleanup. Crashed sessions may leave files behind; there is no automatic retention cleanup. OpenCode and Pi keep prompt state in process memory.
+- Claude, Gemini, and Cursor session files store the latest raw user prompt locally with mode `0600`. Session-end hooks attempt cleanup. Session access removes prompt files older than 24 hours, including expired temporary files left by interrupted writes. Cleanup requires another session read or save; no background service runs. OpenCode and Pi keep prompt state in process memory. Pi preserves direct user instructions across active-session turns and requires restatement after restart, navigation, expiry, or context overflow.
 - Audit fingerprints are unsalted hashes, not anonymization. Audit files remain local, with no telemetry or upload service.
 - Same-user code can change hooks, configuration, or files. Path checks are not atomic filesystem mediation. Use OS isolation when that is part of your threat model.
 
@@ -166,6 +168,7 @@ Replay shows which verdicts would change using the recorded scores. It makes no 
 - [Policy and SDK reference](docs/policy.md)
 - [Architecture and failure behavior](docs/architecture.md)
 - [Threat model and coverage](docs/threat-model.md)
+- [Pi pilot and operations](docs/pilot.md)
 - [Validation and live checks](docs/validation.md)
 - [Roadmap](ROADMAP.md) and [changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md), [agent instructions](AGENTS.md), and [security reporting](SECURITY.md)

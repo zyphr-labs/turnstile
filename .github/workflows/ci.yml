@@ -34,9 +34,13 @@ jobs:
       - run: bun run verify
 
   harnesses:
-    name: host integration (ubuntu)
+    name: host integration (ubuntu, Pi ${{ matrix.pi }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        pi: ["0.85.1", "0.86.1"]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -48,5 +52,5 @@ jobs:
         with:
           node-version: "24"
       - run: bun install --frozen-lockfile
-      - run: npm install --global opencode-ai@1.18.10 @earendil-works/pi-coding-agent@0.85.1
+      - run: npm install --global opencode-ai@1.18.10 @earendil-works/pi-coding-agent@${{ matrix.pi }}
       - run: bun run test:harnesses

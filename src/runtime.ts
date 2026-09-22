@@ -5,7 +5,14 @@ import { configSchema, endpointAuthorization } from "./endpoint";
 import { createGuard, hash } from "./guard";
 import { createJevJudge } from "./jev";
 import type { ActionRequest, Decision } from "./schema";
-import { appendAudit, privateWrite, readBounded } from "./storage";
+import {
+  appendAudit,
+  cleanupSessions,
+  privateWrite,
+  readBounded,
+  retention,
+  withStorageLock,
+} from "./storage";
 
 export type Harness = "claude" | "opencode" | "pi" | "gemini" | "cursor";
 export type EndpointInput = {
@@ -36,6 +43,9 @@ export function normalizeEndpointAction(input: EndpointInput): ActionRequest {
   const pathKey =
     input.harness === "opencode" ? "filePath" : input.harness === "pi" ? "path" : "file_path";
   const normalized = { ...args };
+  // Only Pi's native Edit uses batched replacements. An unrelated argument from
+  // another host must not replace validation of that host's actual edit fields.
+  delete normalized.edits;
   // Use only the documented path field. An unrelated alias must not authorize a different file.
   if (["Read", "Write", "Edit"].includes(canonical)) {
     const path = args[pathKey];
@@ -50,10 +60,24 @@ export function normalizeEndpointAction(input: EndpointInput): ActionRequest {
     if (canonical === "Edit" && ["opencode", "pi"].includes(input.harness)) {
       delete normalized.old_string;
       delete normalized.new_string;
-      const old = args[input.harness === "pi" ? "oldText" : "oldString"];
-      const next = args[input.harness === "pi" ? "newText" : "newString"];
-      if (typeof old === "string") normalized.old_string = old;
-      if (typeof next === "string") normalized.new_string = next;
+      delete normalized.oldText;
+      delete normalized.newText;
+      delete normalized.oldString;
+      delete normalized.newString;
+      if (input.harness === "pi" && Object.hasOwn(args, "edits")) {
+        const edits = z
+          .array(z.object({ oldText: z.string(), newText: z.string() }).strict())
+          .min(1)
+          .safeParse(args.edits);
+        normalized.edits = edits.success
+          ? edits.data.map((edit) => ({ old_string: edit.oldText, new_string: edit.newText }))
+          : null;
+      } else {
+        const old = args[input.harness === "pi" ? "oldText" : "oldString"];
+        const next = args[input.harness === "pi" ? "newText" : "newString"];
+        if (typeof old === "string") normalized.old_string = old;
+        if (typeof next === "string") normalized.new_string = next;
+      }
     }
   }
   return { userGoal: input.userGoal, tool: canonical, arguments: normalized };
@@ -80,9 +104,11 @@ export async function evaluateEndpoint(input: EndpointInput): Promise<Decision> 
         ? createJevJudge({ apiKey, model: config.jev.model, timeoutMs: config.jev.timeoutMs })
         : undefined,
     authorize: endpointAuthorization(config.root),
+    authorizationIdentity: { kind: "endpoint-paths-v2", root: config.root },
     audit: (decision) =>
       appendAudit(join(dirname(configPath), "decisions.jsonl"), {
         ...decision,
+        adapterVersion: "0.1.0-alpha.3",
         harness: input.harness,
         sessionHash: hash([input.harness, input.sessionId]),
       }),
@@ -102,10 +128,10 @@ export async function saveGoal(
   turnId?: string,
 ) {
   z.string().max(16000).parse(goal);
-  await privateWrite(sessionPath(configPath, harness, sessionId), {
-    goal,
-    updatedAt: Date.now(),
-    turnId,
+  const path = sessionPath(configPath, harness, sessionId);
+  await withStorageLock(dirname(path), async () => {
+    await cleanupSessions(dirname(path));
+    await privateWrite(path, { goal, updatedAt: Date.now(), turnId });
   });
 }
 export async function readGoal(
@@ -115,19 +141,69 @@ export async function readGoal(
   turnId?: string,
 ) {
   try {
-    const saved = z
-      .object({
-        goal: z.string().max(16000),
-        updatedAt: z.number().finite(),
-        turnId: z.string().optional(),
-      })
-      .parse(JSON.parse(await readBounded(sessionPath(configPath, harness, sessionId))));
-    const age = Date.now() - saved.updatedAt;
-    return age >= 0 && age <= 86400000 && saved.turnId === turnId ? saved.goal : "";
+    const path = sessionPath(configPath, harness, sessionId);
+    return await withStorageLock(dirname(path), async () => {
+      await cleanupSessions(dirname(path));
+      const saved = z
+        .object({
+          goal: z.string().max(16000),
+          updatedAt: z.number().finite(),
+          turnId: z.string().optional(),
+        })
+        .parse(JSON.parse(await readBounded(path)));
+      const age = Date.now() - saved.updatedAt;
+      return age >= 0 && age <= retention.sessionAgeMs && saved.turnId === turnId ? saved.goal : "";
+    });
   } catch {
     return "";
   }
 }
 export async function clearGoal(configPath: string, harness: Harness, sessionId: string) {
-  await unlink(sessionPath(configPath, harness, sessionId)).catch(() => {});
+  const path = sessionPath(configPath, harness, sessionId);
+  await withStorageLock(dirname(path), async () => {
+    await unlink(path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  });
+}
+
+const outcomeInputSchema = z
+  .object({
+    harness: z.enum(["claude", "opencode", "pi", "gemini", "cursor"]),
+    sessionId: z.string().min(1).max(512),
+    cwd: z.string(),
+    configPath: z.string().optional(),
+    decisionId: z.string().uuid(),
+    requestHash: z.string().regex(/^[a-f0-9]{64}$/),
+    toolCallId: z.string().max(512).optional(),
+    outcome: z.enum(["approved", "rejected", "blocked", "released", "unknown"]),
+    // Machine reason codes only. Never store a host error or tool output here.
+    reason: z
+      .string()
+      .regex(/^[a-z0-9_.-]{1,128}$/)
+      .optional(),
+  })
+  .strict();
+export type EndpointOutcomeInput = z.infer<typeof outcomeInputSchema>;
+
+export async function recordEndpointOutcome(input: EndpointOutcomeInput): Promise<void> {
+  const checked = outcomeInputSchema.parse(input);
+  const configPath = resolve(
+    checked.configPath ??
+      process.env.TURNSTILE_CONFIG ??
+      join(checked.cwd, ".turnstile/config.json"),
+  );
+  await loadEndpoint(configPath, checked.cwd);
+  await appendAudit(join(dirname(configPath), "outcomes.jsonl"), {
+    version: 1,
+    timestamp: new Date().toISOString(),
+    adapterVersion: "0.1.0-alpha.3",
+    harness: checked.harness,
+    sessionHash: hash([checked.harness, checked.sessionId]),
+    decisionId: checked.decisionId,
+    requestHash: checked.requestHash,
+    ...(checked.toolCallId ? { toolCallHash: hash(checked.toolCallId) } : {}),
+    outcome: checked.outcome,
+    ...(checked.reason ? { reason: checked.reason } : {}),
+  });
 }

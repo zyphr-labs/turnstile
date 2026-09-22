@@ -1,9 +1,10 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import turnstileOpenCode from "../src/adapters/opencode";
 import { defaultConfig } from "../src/endpoint";
+import { MODEL } from "../src/jev";
 
 const roots: string[] = [];
 const priorConfig = process.env.TURNSTILE_CONFIG;
@@ -129,4 +130,58 @@ test("late prompt validation cannot overwrite the latest prompt or deleted sessi
   finish?.();
   await oldPrompt;
   await expect(f.action()).rejects.toThrow("context.missing_goal");
+});
+
+test("a completed check belongs to the same OpenCode task context that started it", async () => {
+  const f = await fixture();
+  const config = defaultConfig(f.root);
+  config.policy.mode = "enforce";
+  config.jev.enabled = true;
+  await writeFile(join(f.root, ".turnstile/config.json"), JSON.stringify(config));
+  const previousKey = process.env.TYPESAFE_API_KEY;
+  process.env.TYPESAFE_API_KEY = "synthetic-local-fixture";
+  let entered = Promise.withResolvers<void>();
+  let release = Promise.withResolvers<void>();
+  const fixtureFetch = async () => {
+    entered.resolve();
+    await release.promise;
+    return Response.json({
+      model: MODEL,
+      answers: {
+        intentDrift: { type: "noul", noul: 0.01 },
+        dataDisclosure: { type: "noul", noul: 0.01 },
+      },
+      usage: { input_tokens: 1 },
+    });
+  };
+  const fetchMock = spyOn(globalThis, "fetch").mockImplementation(
+    Object.assign(fixtureFetch, { preconnect: globalThis.fetch.preconnect }),
+  );
+  try {
+    for (const change of ["prompt", "delete", "dispose", "none"]) {
+      entered = Promise.withResolvers<void>();
+      release = Promise.withResolvers<void>();
+      await f.prompt();
+      const result = f.action().then(
+        () => "returned",
+        (error: Error) => error.message,
+      );
+      await entered.promise;
+      if (change === "prompt") await f.prompt("a", "Read README.md instead");
+      if (change === "delete")
+        await f.plugin.event({
+          event: { type: "session.deleted", properties: { info: { id: "a" } } },
+        });
+      if (change === "dispose") await f.plugin.dispose();
+      release.resolve();
+      const outcome = await result;
+      if (change === "none") expect(outcome).toBe("returned");
+      else expect(outcome).toContain("task intent changed");
+    }
+  } finally {
+    release.resolve();
+    fetchMock.mockRestore();
+    if (previousKey === undefined) delete process.env.TYPESAFE_API_KEY;
+    else process.env.TYPESAFE_API_KEY = previousKey;
+  }
 });

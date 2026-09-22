@@ -19,6 +19,9 @@ export const configSchema = z
   })
   .strict();
 export type Config = z.infer<typeof configSchema>;
+const batchEditsSchema = z
+  .array(z.object({ old_string: z.string(), new_string: z.string() }).strict())
+  .min(1);
 export function defaultConfig(root: string): Config {
   return configSchema.parse({
     version: 1,
@@ -97,12 +100,13 @@ export function endpointAuthorization(root: string) {
       return { verdict: "deny", reasons: ["endpoint.control_path"] };
     if (request.tool === "Write" && typeof request.arguments.content !== "string")
       return { verdict: "deny", reasons: ["endpoint.invalid_arguments"] };
-    if (
-      request.tool === "Edit" &&
-      (typeof request.arguments.old_string !== "string" ||
-        typeof request.arguments.new_string !== "string")
-    )
-      return { verdict: "deny", reasons: ["endpoint.invalid_arguments"] };
+    if (request.tool === "Edit") {
+      const valid = Object.hasOwn(request.arguments, "edits")
+        ? batchEditsSchema.safeParse(request.arguments.edits).success
+        : typeof request.arguments.old_string === "string" &&
+          typeof request.arguments.new_string === "string";
+      if (!valid) return { verdict: "deny", reasons: ["endpoint.invalid_arguments"] };
+    }
     return { verdict: "allow", reasons: ["endpoint.workspace_file"] };
   };
 }

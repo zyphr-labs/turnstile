@@ -20,13 +20,13 @@ Credential filename checks cover `.env` and `.env.*`, `.ssh`, `.aws`, `.secrets`
 
 **Shell semantics.** A command can invoke arbitrary programs and change directories. The adapters require review rather than asserting that a command string proves its effects are safe. Human approval may allow operations beyond Turnstile's file-tool checks.
 
-**Content provenance.** The adapters use the latest verified user prompt and proposed arguments. It does not read transcripts, collect tool output, or prove which input caused an action. The SDK can receive labeled untrusted evidence, but Jev's inference remains probabilistic.
+**Content provenance.** Pi uses a bounded history of directly consumed user instructions; other adapters use the latest verified user prompt. No adapter reads transcripts, collects tool output, or proves which input caused an action. Without supplied evidence, instruction override remains unassessed. The SDK can receive labeled untrusted evidence, but Jev's inference remains probabilistic.
 
 **Read contents and memory.** Each adapter checks the requested path without reading the file. Secrets in ordinary files, data already in the model's context, and sensitive information stored by another tool may be invisible.
 
 **Host coverage.** Only registered hook events are mediated. New tools, delegate agents, background processes, skipped hooks, host failures, and host updates can change coverage. Unsupported tools request approval by default; that does not provide inspection of their internal actions.
 
-**Semantic certainty.** The model can miss unsafe actions or flag legitimate work. Default thresholds are uncalibrated. The small synthetic smoke checks are not evidence of production detection rates.
+**Semantic certainty.** The model can miss unsafe actions or flag legitimate work. Default thresholds are uncalibrated. The small synthetic smoke checks and evaluation corpus are not evidence of production detection rates. The recorded evaluation includes an ambiguous, nonempty instruction that Jev allowed despite missing earlier scope. Preserved conversation text is not a deterministic authorization or cancellation mechanism.
 
 **Remote data handling.** Explicitly enabling Jev sends redacted context to TypeSafe. Redaction is partial. Evaluate the provider's current terms and your own data constraints before enabling it on real work.
 

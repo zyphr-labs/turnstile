@@ -162,3 +162,44 @@ test("decision receipts omit goal, tool arguments and evidence", async () => {
   expect(json).not.toContain("private evidence");
   expect(json).not.toContain(action.userGoal);
 });
+
+test("missing evidence stays unassessed instead of recording a low override score", async () => {
+  const guard = createGuard({ policy, judge: safe });
+  const absent = await guard.check(action);
+  expect(absent.verdict).toBe("allow");
+  expect(absent.evidenceStatus).toBe("absent");
+  expect(absent.scores?.instructionOverride).toBeUndefined();
+  const supplied = await guard.check({
+    ...action,
+    evidence: [{ source: "fixture", content: "A note to save privately." }],
+  });
+  expect(supplied.evidenceStatus).toBe("provided");
+  expect(supplied.scores?.instructionOverride).toBe(0.01);
+});
+
+test("a judge must assess instruction influence when evidence was provided", async () => {
+  const guard = createGuard({
+    policy,
+    judge: async () => ({
+      model: "fixture",
+      inputTokens: 1,
+      scores: { intentDrift: 0, dataDisclosure: 0 },
+    }),
+  });
+  const d = await guard.check({ ...action, evidence: [{ source: "fixture", content: "note" }] });
+  expect(d.verdict).toBe("review");
+  expect(d.semanticFailure).toBe("invalid_response");
+});
+
+test("authorization identity is fingerprinted separately without retaining configuration", async () => {
+  const identity = { root: "/synthetic/private/project", version: "paths-v1" };
+  const guard = createGuard({ policy, judge: safe, authorizationIdentity: identity });
+  identity.root = "/changed";
+  const first = await guard.check(action);
+  const second = await createGuard({ policy, judge: safe, authorizationIdentity: identity }).check(
+    action,
+  );
+  expect(first.policyHash).toBe(second.policyHash);
+  expect(first.authorizationHash).not.toBe(second.authorizationHash);
+  expect(JSON.stringify(first)).not.toContain("/synthetic/private/project");
+});

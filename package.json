@@ -10,7 +10,7 @@
   "dependencies": {
     "zod": "^4.6.5"
   },
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "Guardrails for AI agent actions on laptops and servers.",
   "license": "Apache-2.0",
   "exports": {
@@ -37,6 +37,8 @@
     "test:opencode": "bun run scripts/opencode-e2e.ts",
     "test:pi": "bun run scripts/pi-e2e.ts",
     "test:harnesses": "bun run test:opencode && bun run test:pi",
-    "test:live:harnesses": "bun run scripts/opencode-e2e.ts --live && bun run scripts/pi-e2e.ts --live"
+    "test:live:harnesses": "bun run scripts/opencode-e2e.ts --live && bun run scripts/pi-e2e.ts --live",
+    "eval": "bun run scripts/evaluate.ts",
+    "eval:live": "bun run scripts/evaluate.ts --live"
   }
 }

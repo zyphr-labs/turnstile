@@ -124,3 +124,63 @@ test("replay preserves hard denials and unavailable-model reviews", async () => 
   expect(result.code).toBe(0);
   expect(JSON.parse(result.stdout).decisions[0].replayed).toBe("deny");
 });
+
+test("doctor distinguishes configured from observed adapter activity and never claims host execution", async () => {
+  const { root, configPath, event } = await fixture();
+  const empty = JSON.parse((await run(["doctor", "--config", configPath])).stdout);
+  expect(empty.configured).toBe(true);
+  expect(empty.evidence).toBe("no_decisions_observed");
+  expect(empty.jev.credentialPresent).toBe(false);
+  await run(["hook", "--config", configPath], {
+    ...event,
+    hook_event_name: "PreToolUse",
+    tool_name: "Read",
+    tool_input: { file_path: join(root, ".env") },
+  });
+  const populated = JSON.parse((await run(["doctor", "--config", configPath])).stdout);
+  expect(populated.evidence).toBe("decisions_observed");
+  expect(
+    populated.observed.find((row: { harness: string }) => row.harness === "claude").decisions,
+  ).toBe(1);
+  expect(populated.hostLoaded).toBe("unknown");
+  expect(populated.hostEnforcement).toBe("unknown");
+  expect(populated.execution).toBe("unknown");
+});
+
+test("endpoint outcomes link decisions without raw session or tool identifiers and preserve replay", async () => {
+  const { recordEndpointOutcome } = await import("../src/runtime");
+  const { root, configPath, event } = await fixture();
+  await run(["hook", "--config", configPath], {
+    ...event,
+    hook_event_name: "PreToolUse",
+    tool_name: "Read",
+    tool_input: { file_path: join(root, ".env") },
+  });
+  const decision = JSON.parse(
+    (await readFile(join(root, ".turnstile/decisions.jsonl"), "utf8")).trim(),
+  );
+  const input = {
+    harness: "pi" as const,
+    cwd: root,
+    configPath,
+    sessionId: "synthetic-private-session",
+    decisionId: decision.id,
+    requestHash: decision.requestHash,
+    toolCallId: "synthetic-private-tool-call",
+    outcome: "blocked" as const,
+    reason: "policy.denied",
+  };
+  await recordEndpointOutcome(input);
+  const raw = await readFile(join(root, ".turnstile/outcomes.jsonl"), "utf8");
+  expect(raw).not.toContain(input.sessionId);
+  expect(raw).not.toContain(input.toolCallId);
+  expect(JSON.parse(raw).decisionId).toBe(decision.id);
+  await expect(
+    recordEndpointOutcome({ ...input, reason: "raw error with private data" }),
+  ).rejects.toThrow();
+  expect((await run(["replay", join(root, ".turnstile/decisions.jsonl")])).code).toBe(0);
+  const doctor = JSON.parse((await run(["doctor", "--config", configPath])).stdout);
+  expect(
+    doctor.observed.find((row: { harness: string }) => row.harness === "pi").outcomes.blocked,
+  ).toBe(1);
+});

@@ -104,4 +104,4 @@ Receipts identify the harness and a hash of its session ID. They record the guar
 
 Hooks and plugins run with the agent's user permissions. An agent can bypass or modify them unless separate deployment controls prevent that. Other plugins/extensions are trusted. Review [coverage and limits](threat-model.md) before treating these integrations as an endpoint security boundary.
 
-Codex and other hosts are not advertised as supported by this release. Their interception and approval semantics need separate adapters and tests; they must not be enabled by relabeling another host's JSON.
+Codex, Kimi Code, Prime Agent, ZCode, Cline, and Command Code are not supported by this release. The [roadmap](../ROADMAP.md) tracks their integration priorities separately from installed versions and tested coverage. Each needs its own interception and approval assessment, adapter, and host tests; it must not be enabled by relabeling another host's JSON.

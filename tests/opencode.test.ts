@@ -142,7 +142,7 @@ test("a completed check belongs to the same OpenCode task context that started i
   process.env.TYPESAFE_API_KEY = "synthetic-local-fixture";
   let entered = Promise.withResolvers<void>();
   let release = Promise.withResolvers<void>();
-  const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async () => {
+  const fixtureFetch = async () => {
     entered.resolve();
     await release.promise;
     return Response.json({
@@ -153,7 +153,10 @@ test("a completed check belongs to the same OpenCode task context that started i
       },
       usage: { input_tokens: 1 },
     });
-  });
+  };
+  const fetchMock = spyOn(globalThis, "fetch").mockImplementation(
+    Object.assign(fixtureFetch, { preconnect: globalThis.fetch.preconnect }),
+  );
   try {
     for (const change of ["prompt", "delete", "dispose", "none"]) {
       entered = Promise.withResolvers<void>();

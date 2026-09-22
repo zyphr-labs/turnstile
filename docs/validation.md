@@ -86,6 +86,6 @@ This does not establish real Claude, Gemini, or Cursor host behavior, production
 
 ## Pre-merge review
 
-Independent reviews covered storage and recovery, Pi/endpoint integration, and evaluation claims. The follow-up fixes normalize complete audit records without a final newline, remove owned compaction remnants under the log lock, and invalidate pending OpenCode decisions when their task context changes. Regression checks cover malformed logs, unrelated files, concurrent context changes, and unchanged legitimate actions.
+Independent reviews covered storage and recovery, Pi/endpoint integration, and evaluation claims. The follow-up fixes normalize complete audit records without a final newline, remove owned compaction remnants under the log lock, and invalidate pending OpenCode decisions when their task context changes. Regression checks cover malformed logs, unrelated files, concurrent context changes, and unchanged legitimate actions. Post-review local verification passed with 79 tests and 350 assertions, formatting, TypeScript, and the demo. Actual OpenCode and Pi fixture runs also passed.
 
 The review leaves the roadmap priorities unchanged: a consented daily-use trial, independent ambiguous-authorization cases, actual Claude/Gemini/Cursor host runs, and confirmed execution records. No production-readiness or containment claim is added.

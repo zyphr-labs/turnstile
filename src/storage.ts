@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, rename, rmdir, unlink } from "node:fs/promises";
-import { dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 export async function readBounded(path: string, maxBytes = 64000): Promise<string> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -128,6 +128,17 @@ export async function appendAudit(path: string, value: unknown): Promise<void> {
     const stats = new Map(
       await Promise.all(files.map(async (file) => [file, await regularFile(file)] as const)),
     );
+    // No cooperating compaction can still own these temporary files while we
+    // hold this log's lock. Recover remnants left before a crashed writer renamed.
+    const ownedNames = new Set(files.map((file) => basename(file)));
+    for (const name of await readdir(dirname(path))) {
+      const temporary = name.match(
+        /^(.*)\.[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.tmp$/,
+      );
+      if (!temporary || !ownedNames.has(temporary[1] ?? "")) continue;
+      const temporaryPath = join(dirname(path), name);
+      if ((await lstat(temporaryPath)).isFile()) await unlink(temporaryPath);
+    }
     const cutoff = Date.now() - retention.auditAgeMs;
     for (const file of files) {
       const stat = stats.get(file);
@@ -145,9 +156,16 @@ export async function appendAudit(path: string, value: unknown): Promise<void> {
           record && typeof record.timestamp === "string" ? Date.parse(record.timestamp) : NaN;
         return !Number.isFinite(timestamp) || timestamp >= cutoff;
       });
-      if (retained.length !== lines.length || stat.size > retention.auditBytes) {
+      if (
+        retained.length !== lines.length ||
+        stat.size > retention.auditBytes ||
+        (previous.length > 0 && !previous.endsWith("\n"))
+      ) {
         if (retained.length) {
-          await privateWriteText(file, `${retained.join("\n")}\n`);
+          const normalized = `${retained.join("\n")}\n`;
+          if (Buffer.byteLength(normalized) > retention.auditBytes)
+            throw new Error("Normalized audit exceeds retention limit");
+          await privateWriteText(file, normalized);
           stats.set(file, await regularFile(file));
         } else {
           await unlink(file);

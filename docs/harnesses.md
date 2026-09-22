@@ -36,7 +36,7 @@ The wrapper contains an absolute checkout path. Regenerate it after moving Turns
 
 Turnstile accepts nonsynthetic text from root-session user messages as intent. It verifies the session through the host SDK. Resumed sessions without a fresh prompt and model-created subagent sessions have no trusted goal and require review. The plugin keeps this state in memory, not prompt files.
 
-OpenCode's pre-tool callback has no documented native approval method. Enforced review and denial both throw before tool execution. A model cannot turn review into permission by retrying. User-issued shell commands and prompt attachment reads can bypass the model tool callback. Reads can load instruction files, and writes can trigger host formatting or language-server work. These effects are outside direct file-operation mediation.
+OpenCode's pre-tool callback has no documented native approval method. Enforced review and denial both throw before tool execution. A model cannot turn review into permission by retrying. A changed prompt, deleted session, or disposed plugin invalidates a pending decision before the callback returns. Like changed arguments, this integrity failure also interrupts observe mode. User-issued shell commands and prompt attachment reads can bypass the model tool callback. Reads can load instruction files, and writes can trigger host formatting or language-server work. These effects are outside direct file-operation mediation.
 
 Checked against OpenCode 1.18.10 and 1.18.31. Sources: [plugins guide](https://opencode.ai/docs/plugins/), [plugin types](https://github.com/anomalyco/opencode/blob/v1.18.31/packages/plugin/src/index.ts), [tool execution](https://github.com/anomalyco/opencode/blob/v1.18.31/packages/opencode/src/session/tools.ts).
 

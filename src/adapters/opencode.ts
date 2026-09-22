@@ -93,6 +93,10 @@ export default async function turnstileOpenCode(context: OpenCodeContext) {
         tool: input.tool,
         arguments: args,
       });
+      // The result belongs to the intent captured before the asynchronous check.
+      // A replacement prompt, session deletion, or disposal invalidates it.
+      if (goals.get(id) !== saved)
+        throw new Error("Turnstile: task intent changed during evaluation; check the action again");
       if (JSON.stringify(output.args) !== snapshot)
         throw new Error("Turnstile: tool arguments changed during evaluation");
       if (decision.enforced) {

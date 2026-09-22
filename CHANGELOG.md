@@ -7,6 +7,8 @@
 - Fixed Pi 0.86 batched-edit compatibility, discovered through the new real-host read/edit/test workflow.
 - Missing evidence now leaves instruction override unassessed instead of recording a misleading score. Added safe provider failure categories and evaluator/authorization fingerprints.
 - Added local diagnostics, bounded audit rotation, seven-day record pruning, and expired session cleanup. Cleanup happens on access; review the pilot guide before upgrading an installation with existing logs.
+- OpenCode discards pending decisions when task intent changes, the session is deleted, or the plugin is disposed.
+- Fixed audit recovery for complete records missing a final newline and interrupted-compaction temporary files.
 - Added a versioned synthetic evaluation corpus, separate held-out reporting, and an opt-in live result. The report includes an ambiguous instruction that Jev allowed.
 
 Compatibility: instruction-override scores are now optional; older receipts still replay. Defaults remain observe mode with Jev disabled. No npm package is published.

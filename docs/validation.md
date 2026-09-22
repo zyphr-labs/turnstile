@@ -83,3 +83,9 @@ The real Pi RPC workflow passed on installed Pi 0.86.1 and an isolated Pi 0.85.1
 Live Jev checks passed through the SDK, Claude hook CLI, OpenCode 1.18.10, and Pi 0.86.1. These used the saved API credential outside the repository and synthetic inputs only. The OpenCode and Pi agent models remained local fixtures. There were no provider failures in these smoke checks or the 13-call synthetic evaluation run.
 
 This does not establish real Claude, Gemini, or Cursor host behavior, production model accuracy, daily-use completion rates, or OS containment. The RPC confirmation test uses a scripted client; a human usability trial is still needed.
+
+## Pre-merge review
+
+Independent reviews covered storage and recovery, Pi/endpoint integration, and evaluation claims. The follow-up fixes normalize complete audit records without a final newline, remove owned compaction remnants under the log lock, and invalidate pending OpenCode decisions when their task context changes. Regression checks cover malformed logs, unrelated files, concurrent context changes, and unchanged legitimate actions.
+
+The review leaves the roadmap priorities unchanged: a consented daily-use trial, independent ambiguous-authorization cases, actual Claude/Gemini/Cursor host runs, and confirmed execution records. No production-readiness or containment claim is added.

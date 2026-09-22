@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { appendAudit, retention } from "../src/storage";
@@ -98,6 +98,50 @@ test("oversized legacy single records and incomplete tails fail without replacin
     await expect(appendAudit(path, { id: "new" })).rejects.toThrow("Legacy audit");
     expect(await readFile(path, "utf8")).toBe(legacy);
   }
+});
+
+test("appending repairs a complete final record without a newline and keeps later appends usable", async () => {
+  const { path } = await fixture();
+  await writeFile(path, JSON.stringify({ id: "prior" }));
+  await appendAudit(path, { id: "next" });
+  await appendAudit(path, { id: "third" });
+  expect(
+    (await readFile(path, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line).id),
+  ).toEqual(["prior", "next", "third"]);
+  const incomplete = '{"id":"prior"}\n{"id":';
+  await writeFile(path, incomplete);
+  await expect(appendAudit(path, { id: "next" })).rejects.toThrow();
+  expect(await readFile(path, "utf8")).toBe(incomplete);
+  const full = JSON.stringify({ padding: "x".repeat(retention.auditBytes - 14) });
+  expect(Buffer.byteLength(full)).toBe(retention.auditBytes);
+  await writeFile(path, full);
+  await expect(appendAudit(path, { id: "next" })).rejects.toThrow("retention limit");
+  expect(await readFile(path, "utf8")).toBe(full);
+});
+
+test("audit append recovers only regular temporary files owned by the locked log", async () => {
+  const { root, path } = await fixture();
+  const suffix = ".12345678-1234-4123-8123-123456789012.tmp";
+  const remnants = [path + suffix, `${path}.1${suffix}`];
+  for (const file of remnants) await writeFile(file, "synthetic audit data");
+  const unrelated = join(root, `outcomes.jsonl${suffix}`);
+  const unrecognized = `${path}.not-a-uuid.tmp`;
+  await writeFile(unrelated, "keep unrelated log");
+  await writeFile(unrecognized, "keep unrelated temporary file");
+  const linked = `${path}.2${suffix}`;
+  await symlink(unrelated, linked);
+  const directory = `${path}.3${suffix}`;
+  await mkdir(directory);
+  await appendAudit(path, { id: "recovered" });
+  for (const file of remnants) expect(await Bun.file(file).exists()).toBe(false);
+  expect(await readFile(unrelated, "utf8")).toBe("keep unrelated log");
+  expect(await readFile(linked, "utf8")).toBe("keep unrelated log");
+  expect(await readFile(unrecognized, "utf8")).toBe("keep unrelated temporary file");
+  expect((await stat(directory)).isDirectory()).toBe(true);
+  expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ id: "recovered" });
 });
 
 test("session access removes only expired owned temporary files", async () => {

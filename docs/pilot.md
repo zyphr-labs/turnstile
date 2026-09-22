@@ -52,7 +52,7 @@ The read-only report shows configured mode, whether an API key is present in the
 
 ## Storage and recovery
 
-Each decision or outcome log retains an active file of at most 1 MiB plus three archives. Appending removes records older than seven days and rotates full files. On upgrade, oversized logs retain only complete trailing records within the new cap; older entries are discarded. Export any history you need before upgrading. Malformed or incomplete oversized tails fail without replacing the original file. `doctor` reports migration pending for oversized logs.
+Each decision or outcome log retains an active file of at most 1 MiB plus three archives. Appending removes records older than seven days and rotates full files. On upgrade, oversized logs retain only complete trailing records within the new cap; older entries are discarded. Export any history you need before upgrading. A complete final record missing its newline is repaired if the normalized file stays within the cap. Malformed records and incomplete oversized tails fail without replacing the original file. After crash-lock recovery, the next append removes recognized regular compaction temporary files belonging to that log; it preserves unrelated files and symlinks. `doctor` reports migration pending for oversized logs.
 
 Persisted prompt files belong to Claude, Gemini, and Cursor; Pi and OpenCode keep prompt state in memory. Session reads and saves remove recognized prompt files and interrupted-write temporary files older than 24 hours. No cleanup daemon runs. Inactive projects retain data until another access or deliberate deletion.
 

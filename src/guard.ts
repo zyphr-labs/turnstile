@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { type Judge, judgmentSchema } from "./jev";
+import { JevError, type Judge, judgmentSchema } from "./jev";
 import {
   type ActionRequest,
   type CheckedRequest,
@@ -47,10 +47,13 @@ export function createGuard(options: {
   policy: Policy;
   judge?: Judge;
   authorize?: (request: CheckedRequest) => Promise<HardDecision>;
+  authorizationIdentity?: unknown;
   audit?: (decision: Decision) => Promise<void>;
 }) {
   // Detach configuration from caller mutation.
   const policy = policySchema.parse(structuredClone(options.policy));
+  const authorizationHash =
+    options.authorizationIdentity === undefined ? undefined : hash(options.authorizationIdentity);
   async function check(input: ActionRequest): Promise<Decision> {
     const start = performance.now();
     const request = requestSchema.parse(structuredClone(input));
@@ -85,6 +88,7 @@ export function createGuard(options: {
       }
     }
     let semantic: Decision["semantic"] = "skipped";
+    let semanticFailure: Decision["semanticFailure"];
     let judgment: Awaited<ReturnType<Judge>> | undefined;
     let result = hard;
     if (hard.verdict === "allow") {
@@ -96,12 +100,21 @@ export function createGuard(options: {
       } else {
         try {
           judgment = judgmentSchema.parse(await options.judge(structuredClone(request)));
+          // An absent evidence trail cannot support an instruction-influence judgment.
+          // Keep it absent in receipts and threshold replay instead of inventing a zero.
+          if (request.evidence.length === 0) delete judgment.scores.instructionOverride;
+          else if (judgment.scores.instructionOverride === undefined)
+            throw new JevError("invalid_response");
           semantic = "evaluated";
           result = combine(hard, judgment.scores, policy.thresholds);
-        } catch {
+        } catch (error) {
           judgment = undefined;
           semantic = "unavailable";
-          result = { verdict: "review", reasons: [...hard.reasons, "semantic.unavailable"] };
+          semanticFailure = error instanceof JevError ? error.code : "unknown";
+          result = {
+            verdict: "review",
+            reasons: [...hard.reasons, "semantic.unavailable", `provider.${semanticFailure}`],
+          };
         }
       }
     }
@@ -117,8 +130,17 @@ export function createGuard(options: {
       hard,
       reasons: result.reasons,
       semantic,
+      evidenceStatus: request.evidence.length ? "provided" : "absent",
+      ...(semanticFailure ? { semanticFailure } : {}),
+      ...(authorizationHash ? { authorizationHash } : {}),
       ...(judgment
-        ? { scores: judgment.scores, model: judgment.model, inputTokens: judgment.inputTokens }
+        ? {
+            scores: judgment.scores,
+            model: judgment.model,
+            inputTokens: judgment.inputTokens,
+            ...(judgment.evaluatorVersion ? { evaluatorVersion: judgment.evaluatorVersion } : {}),
+            ...(judgment.evaluatorHash ? { evaluatorHash: judgment.evaluatorHash } : {}),
+          }
         : {}),
       latencyMs: Math.round((performance.now() - start) * 100) / 100,
     };

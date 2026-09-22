@@ -47,7 +47,9 @@ bun run test:harnesses
 
 Each script starts a loopback OpenAI-compatible fixture server, loads the actual adapter into an isolated host process, and emits one harmless write tool call. Observe mode must create the expected marker. Enforced hard denial must leave it absent. The receipt must match the trusted goal and exact normalized arguments. Temporary projects, host state, and fixture servers are removed afterward.
 
-These checks do not use an external model account. CI installs pinned OpenCode 1.18.10 and Pi 0.85.1 and runs them on Linux. Pi requires Node 22.19 or later. You can run either test independently with `bun run test:opencode` or `bun run test:pi`.
+Pi additionally runs a two-turn RPC read/edit/test workflow with exact-action confirmations, a rejected command, and a separate enforced-review case without UI. It checks completed tool results and resulting files, retained intent, and linked outcome records.
+
+These checks do not use an external model account. CI installs pinned OpenCode 1.18.10 and tests both Pi 0.85.1 and 0.86.1 on Linux. Pi requires Node 22.19 or later. You can run either test independently with `bun run test:opencode` or `bun run test:pi`.
 
 To additionally require a real Jev allow decision before the host writes a marker:
 
@@ -65,3 +67,19 @@ Offline verification and real OpenCode/Pi fixture execution passed locally on ma
 Live checks passed on September 19, 2026 with Jev `jev-1.13.0`: the SDK allowed a benign note and denied an unrequested synthetic disclosure, the Claude hook CLI allowed a permitted write, and real OpenCode and Pi processes created their markers after a Jev allow decision. Both hosts also passed observe and deterministic-denial cases. These host checks used a loopback fixture for the agent model and the real TypeSafe API for Jev.
 
 The first OpenCode live attempt timed out at the provider boundary and blocked the write with `semantic.unavailable`; a retry passed. Provider failures remain failed allowed-action tests. No detection-rate, production-readiness, or tamper-resistance claim is made.
+
+## Alpha.3 evaluation
+
+`bun run eval` validates the report pipeline with fixture scores. `bun run eval:live` evaluates the fixed synthetic corpus through Jev and requires an explicit API key. Calibration and held-out groups are reported separately. Provider errors are interruptions and excluded from semantic detection metrics. Ambiguous requests have their own counts.
+
+The [recorded live report](../evals/results/2026-09-22-live.json) and [pilot guide](pilot.md#evaluation-record-and-remaining-work) include the measured outcomes and limitations. No tool action is executed by this evaluation script. Real host workflow completion is established separately by `test:pi`.
+
+## September 22, 2026 validation
+
+Local verification passed on macOS with Bun 1.3.13: formatting, TypeScript, 76 tests with 333 assertions, and the runnable example. The offline evaluation command and local documentation links also passed.
+
+The real Pi RPC workflow passed on installed Pi 0.86.1 and an isolated Pi 0.85.1 invocation. Both completed read, edit, and approved tests, preserved the original restriction on the follow-up, and blocked the rejected command. Observe, hard-deny, and review-without-UI scenarios passed too.
+
+Live Jev checks passed through the SDK, Claude hook CLI, OpenCode 1.18.10, and Pi 0.86.1. These used the saved API credential outside the repository and synthetic inputs only. The OpenCode and Pi agent models remained local fixtures. There were no provider failures in these smoke checks or the 13-call synthetic evaluation run.
+
+This does not establish real Claude, Gemini, or Cursor host behavior, production model accuracy, daily-use completion rates, or OS containment. The RPC confirmation test uses a scripted client; a human usability trial is still needed.

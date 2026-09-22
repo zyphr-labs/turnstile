@@ -53,11 +53,22 @@ export const scoresSchema = z
   .object({
     intentDrift: z.number().min(0).max(1),
     dataDisclosure: z.number().min(0).max(1),
-    instructionOverride: z.number().min(0).max(1),
+    instructionOverride: z.number().min(0).max(1).optional(),
   })
   .strict();
 export type Scores = z.infer<typeof scoresSchema>;
 export type HardDecision = { verdict: Verdict; reasons: string[] };
+export const semanticFailureSchema = z.enum([
+  "authentication",
+  "rate_limited",
+  "timeout",
+  "network",
+  "http",
+  "invalid_response",
+  "context_limit",
+  "unknown",
+]);
+export type SemanticFailure = z.infer<typeof semanticFailureSchema>;
 export const decisionSchema = z
   .object({
     version: z.literal(1),
@@ -71,6 +82,12 @@ export const decisionSchema = z
     hard: z.object({ verdict: verdictSchema, reasons: z.array(z.string()) }),
     reasons: z.array(z.string()),
     semantic: z.enum(["evaluated", "unavailable", "disabled", "skipped"]),
+    semanticFailure: semanticFailureSchema.optional(),
+    evidenceStatus: z.enum(["absent", "provided"]).optional(),
+    evaluatorVersion: z.string().optional(),
+    evaluatorHash: z.string().optional(),
+    authorizationHash: z.string().optional(),
+    adapterVersion: z.string().optional(),
     scores: scoresSchema.optional(),
     model: z.string().optional(),
     inputTokens: z.number().int().nonnegative().optional(),

@@ -1,11 +1,13 @@
 # Roadmap
 
-The first release is a small guardrail engine and adapters for five agent hosts. Future work should follow evidence from normal use rather than a target integration count.
+Alpha.3 adds a Pi pilot, multi-turn intent within an active session, linked approval outcomes, bounded local storage, diagnostics, and a synthetic evaluation record. See [pilot operation and results](docs/pilot.md). These are implementation and fixture results, not evidence of production detection rates.
 
-- Label legitimate and unwanted actions from consenting users. Measure task completion, unnecessary approvals, missed violations, and added latency before changing thresholds.
-- Add operator-controlled intent and provenance across turns. Keep observed tool output distinct from inferred influence.
-- Add bounded retention and audit rotation, then a local decision viewer if the CLI makes investigations cumbersome.
-- Expand real-host validation for Gemini, Cursor, and Claude, and test an application integration against the same decision contract.
-- Design exact-action approval receipts for SDK consumers before introducing shared approval queues.
+Next work, in order:
 
-OS containment, enterprise fleet deployment, MCP proxying, a hosted dashboard, and provider independence are separate design decisions. They are not promised by this alpha. Open an issue with the use case before starting one of those changes.
+1. Run a consented daily-use trial on Pi. Record completed tasks, unnecessary approvals and blocks, missed violations, provider failures, and added latency. Agree on acceptable interruption and latency budgets before promoting enforcement.
+2. Expand the labeled corpus with independent tasks and ambiguous authorization. Keep held-out results separate from threshold selection. The current report includes an underspecified nonempty instruction Jev allowed.
+3. Validate actual Claude, Gemini, and Cursor hosts. Keep host versions pinned in test records. Design an explicit operator recovery path for integrations where review currently blocks.
+4. Add outcome confirmation where the host reliably exposes it. Pi release-request records do not establish execution. Design SDK approval receipts before introducing shared queues.
+5. Extend operator-controlled task intent beyond Pi, including deliberate task transitions and restart behavior. Keep observed evidence separate from inferred influence.
+
+OS containment, enterprise fleet deployment, MCP proxying, a hosted dashboard, package publication, and provider independence require separate design decisions and evidence of need. They are not promised by this alpha.

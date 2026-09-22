@@ -44,8 +44,16 @@ The generated host timeout is 15 seconds. The internal deadline is intended to f
 
 ## Receipts and replay
 
-Each receipt has a UUID, timestamp, policy and request hashes, deterministic verdict, final verdict, reason codes, mode, enforcement flag, semantic status, scores when available, model ID, token count, and evaluation latency. The `enforced` flag records that the guard requested enforcement; it does not prove that a host blocked execution or that a person approved review. Optional harness and hashed-session fields identify adapter traffic. Latency ends before the audit write. The policy hash covers core tool policy and thresholds, not the code or configuration of an optional authorization callback.
+Each receipt has a UUID, timestamp, policy and request hashes, deterministic verdict, final verdict, reason codes, mode, enforcement flag, semantic status, scores when available, model ID, token count, and evaluation latency. The `enforced` flag records that the guard requested enforcement; it does not prove that a host blocked execution or that a person approved review. Optional harness and hashed-session fields identify adapter traffic. Latency ends before the audit write. The policy hash covers core tool policy and thresholds. Endpoint receipts also include an authorization hash over the workspace and path-policy version, an adapter version, and, when Jev succeeds, an evaluator version and hash over the model and actual questions. SDK callback integrations must supply their own authorization identity; the hash is provenance, not proof of unchanged code.
 
 Endpoint adapters write receipts as JSON lines with file mode `0600`. Session prompt files also use `0600`; newly created state directories use `0700`. Final file components are protected against symlink following for audit reads and writes. These measures do not prevent same-user access or replacement of parent directories.
 
 Replay is threshold recomputation over saved probabilities, with no content or provider requests. Hard decisions remain authoritative. It is useful for inspecting approval volume, but it cannot measure accuracy without separately labeled outcomes and cannot predict the scores from a different model or prompt.
+
+## Pilot operations
+
+Pi retains bounded direct user instructions in memory across consumed turns. It records exact-action approval, rejection, blocking, and release requests separately from decisions. A `released` event is written before the callback returns; a later `blocked` event supersedes it. Neither establishes successful tool execution. Enforce-mode outcome persistence failure blocks the action. Observe-mode outcome persistence is best effort; decision audit failures retain the existing blocking behavior.
+
+Decision and outcome logs each have a 1 MiB active file and at most three archives. On append, expired records are removed and oversized legacy logs are reduced to complete trailing records under the new limit. Session access removes recognized prompt files and interrupted-write temporary files after 24 hours. Retention runs on access, so inactive projects require explicit deletion if immediate erasure is needed.
+
+Cooperating processes serialize writes, rotation, and session cleanup with short-lived directory locks. A killed writer can leave a lock. Acquisition stops after two seconds; there is no automatic stale-lock takeover. See the [pilot guide](pilot.md) for recovery. Same-user tampering and replacement of ancestor directories remain outside the protection guarantee.

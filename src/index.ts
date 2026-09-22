@@ -1,5 +1,13 @@
 export { ActionBlocked, combine, createGuard } from "./guard";
-export { createJevJudge, type Judge, type Judgment, MODEL, redact } from "./jev";
+export {
+  createJevJudge,
+  EVALUATOR_VERSION,
+  JevError,
+  type Judge,
+  type Judgment,
+  MODEL,
+  redact,
+} from "./jev";
 export {
   type ActionRequest,
   type Decision,

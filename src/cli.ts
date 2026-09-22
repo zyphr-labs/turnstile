@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { cursorHook } from "./adapters/cursor";
 import { geminiHook } from "./adapters/gemini";
 import { claudeHook } from "./claude";
+import { diagnoseEndpoint } from "./diagnostics";
 import { defaultConfig } from "./endpoint";
 import { combine } from "./guard";
 import { decisionSchema, thresholdsSchema } from "./schema";
@@ -40,7 +41,7 @@ async function stdin(): Promise<string> {
 async function main() {
   if (!command || command === "--help" || command === "help") {
     console.log(
-      `Turnstile 0.1.0-alpha.2\n\n  init --project PATH       Create observe-only config; no host settings changed\n  claude-settings --config PATH\n  gemini-settings --config PATH\n  cursor-settings --config PATH\n                           Print settings to merge into the host's project config\n  opencode-plugin          Print a project plugin wrapper\n  adapter-path --harness pi|opencode\n                           Print the extension or plugin source path\n  hook --config PATH [--harness claude|gemini|cursor]\n                           Handle hook JSON on stdin; Claude is the default\n  replay FILE [--review N] [--deny N]\n                           Recompute semantic thresholds from metadata-only audit\n\nJev is opt-in in config.json and requires TYPESAFE_API_KEY.\nSee docs/harnesses.md for scoped installation and host behavior.`,
+      `Turnstile 0.1.0-alpha.3\n\n  init --project PATH       Create observe-only config; no host settings changed\n  claude-settings --config PATH\n  gemini-settings --config PATH\n  cursor-settings --config PATH\n                           Print settings to merge into the host's project config\n  opencode-plugin          Print a project plugin wrapper\n  adapter-path --harness pi|opencode\n                           Print the extension or plugin source path\n  hook --config PATH [--harness claude|gemini|cursor]\n                           Handle hook JSON on stdin; Claude is the default\n  doctor --config PATH     Report configuration and retained local adapter evidence\n  replay FILE [--review N] [--deny N]\n                           Recompute semantic thresholds from metadata-only audit\n\nJev is opt-in in config.json and requires TYPESAFE_API_KEY.\nSee docs/harnesses.md for scoped installation and host behavior.`,
     );
     return;
   }
@@ -143,6 +144,13 @@ async function main() {
     } finally {
       clearTimeout(deadline);
     }
+    return;
+  }
+  if (command === "doctor") {
+    const config = option("--config");
+    noExtras();
+    if (!config) throw new Error("--config required");
+    console.log(JSON.stringify(await diagnoseEndpoint(config), null, 2));
     return;
   }
   if (command === "replay") {

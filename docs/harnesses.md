@@ -56,13 +56,13 @@ pi -e /absolute/path/to/turnstile/src/adapters/pi.ts
 
 There is no global install. Stop supplying `-e` to remove the integration. The extension reads `.turnstile/config.json` in the active project, or `TURNSTILE_CONFIG` if set.
 
-Pi input must come from an interactive user or RPC caller and match the user message consumed by the agent. Queued follow-ups do not replace the active goal until consumed. Session navigation clears intent. Expanded or transformed prompts that cannot be matched require review rather than being treated as authorization.
+Pi input must come from an interactive user or RPC caller and match the user message consumed by the agent. Direct instructions accumulate only when consumed, preserving earlier restrictions across follow-ups. History is limited to 32 instructions, 16,000 rendered characters, and 24 hours. Overflow, expiry, and unmatched transformed input make intent unavailable until `/turnstile-reset` and a complete task restatement. Restart and session navigation clear history. This state is memory-only; cancellation text is preserved but is not a deterministic stop command. Use Pi's stop control to interrupt an active run.
 
-For review, the UI displays the tool, call ID, request fingerprint, reasons, and complete arguments. Approval applies to that call only. Changed arguments or session navigation invalidate it. A hard denial never opens a confirmation. Without UI, review blocks.
+For review, the UI displays the tool, call ID, request fingerprint, reasons, and complete arguments. Approval applies to that call only. Changed arguments, consumed instructions, or session navigation invalidate it. Approval and release requests are recorded in `outcomes.jsonl`; later blocking supersedes a release request. These records do not prove execution. A hard denial never opens a confirmation. Without UI, review blocks.
 
 The extension normalizes Pi's path syntax before checking and uses the same path for execution. Reads require the exact target to exist so the host cannot silently choose an alternate filename. User `!` commands and operations performed directly by another extension are outside `tool_call` coverage. Other extensions are trusted and may run after Turnstile.
 
-Checked against Pi 0.85.1. Source: [Pi extensions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md).
+Pi 0.85.1 single edits and Pi 0.86.1 batched edits normalize into the same engine. The real-host fixture exercises read, edit, approved tests, and a rejected action through RPC confirmation. Checked against Pi 0.85.1 and 0.86.1. Source: [Pi extensions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md).
 
 ## Gemini CLI
 
@@ -100,7 +100,7 @@ See the existing [Claude Code guide](claude-code.md). Its launch-scoped configur
 
 ## Shared limits
 
-Receipts identify the harness and a hash of its session ID. They record the guard's recommendation and requested enforcement, not proof of execution or a completed host approval. There is no separate approval receipt yet.
+Receipts identify the harness and a hash of its session ID. They record the guard's recommendation and requested enforcement, not proof of execution or a completed host approval. Pi records linked approval and release-request events separately. Other adapters do not yet record host approval outcomes.
 
 Hooks and plugins run with the agent's user permissions. An agent can bypass or modify them unless separate deployment controls prevent that. Other plugins/extensions are trusted. Review [coverage and limits](threat-model.md) before treating these integrations as an endpoint security boundary.
 

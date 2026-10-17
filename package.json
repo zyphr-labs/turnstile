@@ -8,7 +8,7 @@
     "typescript": "5.9.3"
   },
   "dependencies": {
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "version": "0.1.0-alpha.3",
   "description": "Guardrails for AI agent actions on laptops and servers.",
